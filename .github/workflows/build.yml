@@ -9,17 +9,17 @@ on:
 
 jobs:
   # ─────────────────────────────────────────────────────────────
-  #  Linux — Ubuntu 18.04 container (has gcc-5 natively)
-  #  + CUDA 8.0 runfile = Fermi sm_21 support
+  #  Linux — ubuntu:18.04 container (GCC 5 native, GLIBC 2.27)
+  #  checkout@v3 uses Node 16 which only needs GLIBC 2.17 ✓
   # ─────────────────────────────────────────────────────────────
   build-linux:
-    name: Linux CUDA 8.0 (sm_21 Fermi)
+    name: Linux CUDA 8.0 sm_21 Fermi
     runs-on: ubuntu-22.04
     container:
-      image: ubuntu:18.04   # 18.04 ships gcc-5 in default repos, no PPA needed
+      image: ubuntu:18.04
 
     steps:
-      - name: Install dependencies
+      - name: Install dependencies + GCC 5
         run: |
           apt-get update -qq
           apt-get install -y --no-install-recommends \
@@ -29,15 +29,15 @@ jobs:
           update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-5 50
           gcc --version
 
+      # checkout@v3 = Node 16, needs GLIBC >= 2.17 — ubuntu:18.04 has 2.27 ✓
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v3
 
       - name: Install CUDA 8.0 via runfile
         run: |
           wget -q https://developer.nvidia.com/compute/cuda/8.0/Prod2/local_installers/cuda_8.0.61_375.26_linux-run \
                -O cuda_8.0_installer.run
           chmod +x cuda_8.0_installer.run
-          # --override bypasses compiler version check, --toolkit skips driver install
           sh cuda_8.0_installer.run --silent --toolkit --no-opengl-libs --override
           echo "/usr/local/cuda-8.0/bin" >> $GITHUB_PATH
 
@@ -57,36 +57,37 @@ jobs:
             -Xcompiler -O3 \
             -w
 
-      - name: Smoke test (CPU-only on CI)
+      - name: Smoke test (CPU-only mode on CI)
         run: ./hybrid_engine 2>&1 | tee build_output.txt
 
-      - name: Upload Linux binary
-        uses: actions/upload-artifact@v4
+      - name: Upload binary
+        uses: actions/upload-artifact@v3
         with:
-          name: hybrid_engine_linux_x64
+          name: hybrid_engine_linux_cuda8_sm21
           path: hybrid_engine
           retention-days: 30
 
       - name: Upload build log
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v3
         with:
           name: build_log
           path: build_output.txt
           retention-days: 7
 
   # ─────────────────────────────────────────────────────────────
-  #  Windows — for your actual PC
+  #  Windows — CUDA 11.8 sm_35 (no Fermi support post CUDA 9)
+  #  Use this .exe if you ever swap to a Kepler GT730 variant
   # ─────────────────────────────────────────────────────────────
   build-windows:
-    name: Windows MSVC (sm_35 + sm_50)
+    name: Windows CUDA 11.8 sm_35
     runs-on: windows-2022
     needs: build-linux
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v3
 
-      - name: Install CUDA Toolkit 11.8
+      - name: Install CUDA 11.8
         uses: Jimver/cuda-toolkit@v0.2.11
         with:
           cuda: '11.8.0'
@@ -96,7 +97,7 @@ jobs:
       - name: Set up MSVC
         uses: ilammy/msvc-dev-cmd@v1
 
-      - name: Compile hybrid_engine (Windows)
+      - name: Compile hybrid_engine
         shell: cmd
         run: |
           nvcc hybrid_engine.cu ^
@@ -109,8 +110,8 @@ jobs:
             -w
 
       - name: Upload Windows binary
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v3
         with:
-          name: hybrid_engine_windows_x64
+          name: hybrid_engine_windows_sm35
           path: hybrid_engine.exe
           retention-days: 30
