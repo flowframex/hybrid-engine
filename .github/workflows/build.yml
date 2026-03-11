@@ -1,0 +1,121 @@
+name: Build Hybrid CPU-GPU Engine
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  pull_request:
+    branches: [ "main", "master" ]
+  workflow_dispatch:    # lets you click "Run workflow" manually in GitHub UI
+
+jobs:
+  build:
+    name: Compile with NVCC (CUDA 8.0 / sm_21 + sm_35)
+    runs-on: ubuntu-20.04   # 20.04 still ships CUDA 11.x with sm_21 support
+
+    steps:
+    # ── 1. Checkout your repo ─────────────────────────────────
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    # ── 2. Install CUDA Toolkit ───────────────────────────────
+    #      We use CUDA 11.8 — last version with Fermi (sm_21) support.
+    #      GT730 Kepler variant uses sm_35, also included.
+    - name: Install CUDA Toolkit 11.8
+      run: |
+        wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2004/x86_64/cuda-keyring_1.0-1_all.deb
+        sudo dpkg -i cuda-keyring_1.0-1_all.deb
+        sudo apt-get update -qq
+        sudo apt-get install -y --no-install-recommends \
+          cuda-compiler-11-8 \
+          cuda-cudart-dev-11-8 \
+          cuda-libraries-dev-11-8
+        echo "/usr/local/cuda-11.8/bin" >> $GITHUB_PATH
+        echo "CUDA_HOME=/usr/local/cuda-11.8" >> $GITHUB_ENV
+
+    # ── 3. Verify NVCC is available ───────────────────────────
+    - name: Verify nvcc
+      run: nvcc --version
+
+    # ── 4. Compile the engine ─────────────────────────────────
+    #      -arch=sm_21  → Fermi  GT730 (GF108 variant)
+    #      -arch=sm_35  → Kepler GT730 (GK208 variant)
+    #      We compile for both so the binary works on either card.
+    #      -O3          → maximum optimisation
+    #      -std=c++17   → modern C++ features
+    - name: Compile hybrid_engine
+      run: |
+        nvcc hybrid_engine.cu \
+          -o hybrid_engine \
+          -arch=sm_21 \
+          -gencode arch=compute_21,code=sm_21 \
+          -gencode arch=compute_35,code=sm_35 \
+          -gencode arch=compute_50,code=sm_50 \
+          -O3 \
+          -std=c++17 \
+          -Xcompiler -pthread \
+          -Xcompiler -O3 \
+          -lineinfo \
+          -w
+
+    # ── 5. Run the built binary (no GPU on CI, uses CPU-only) ─
+    - name: Smoke test (CPU-only mode on CI)
+      run: |
+        ./hybrid_engine 2>&1 | tee build_output.txt
+        echo "Exit code: $?"
+
+    # ── 6. Upload the compiled binary as a release artifact ───
+    - name: Upload binary artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: hybrid_engine_linux_x64
+        path: hybrid_engine
+        retention-days: 30
+
+    # ── 7. Also upload build log ──────────────────────────────
+    - name: Upload build log
+      uses: actions/upload-artifact@v4
+      with:
+        name: build_log
+        path: build_output.txt
+        retention-days: 7
+
+  # ── Optional: Windows build (for running on your PC) ─────────
+  build-windows:
+    name: Compile for Windows (for your actual PC)
+    runs-on: windows-2019
+    needs: build    # only run if Linux build passed
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Install CUDA Toolkit on Windows
+      uses: Jimver/cuda-toolkit@v0.2.11
+      id: cuda-toolkit
+      with:
+        cuda: '11.8.0'
+        method: 'network'
+        sub-packages: '["nvcc", "cudart", "visual_studio_integration"]'
+
+    - name: Set up MSVC
+      uses: ilammy/msvc-dev-cmd@v1
+
+    - name: Compile hybrid_engine (Windows)
+      shell: cmd
+      run: |
+        nvcc hybrid_engine.cu ^
+          -o hybrid_engine.exe ^
+          -arch=sm_21 ^
+          -gencode arch=compute_21,code=sm_21 ^
+          -gencode arch=compute_35,code=sm_35 ^
+          -O3 ^
+          -std=c++17 ^
+          -Xcompiler /O2 ^
+          -w
+
+    - name: Upload Windows binary
+      uses: actions/upload-artifact@v4
+      with:
+        name: hybrid_engine_windows_x64
+        path: hybrid_engine.exe
+        retention-days: 30
