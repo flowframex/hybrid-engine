@@ -41,7 +41,7 @@ jobs:
 
               # ── 3. Install toolkit (verbose, no driver) ────
               echo "[STEP] Installing CUDA 8.0 toolkit..."
-              sh /tmp/cuda_installer.run \
+              sh /tmp/cuda_installer.run --silent \
                 --toolkit \
                 --no-opengl-libs \
                 --override \
