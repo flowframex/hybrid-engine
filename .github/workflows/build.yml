@@ -61,14 +61,14 @@ jobs:
         run: ./hybrid_engine 2>&1 | tee build_output.txt
 
       - name: Upload binary
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: hybrid_engine_linux_cuda8_sm21
           path: hybrid_engine
           retention-days: 30
 
       - name: Upload build log
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: build_log
           path: build_output.txt
@@ -110,7 +110,7 @@ jobs:
             -w
 
       - name: Upload Windows binary
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: hybrid_engine_windows_sm35
           path: hybrid_engine.exe
