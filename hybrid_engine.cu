@@ -15,9 +15,34 @@
  */
 
 // ── Standard Headers ──────────────────────────────────────────
-#include <cuda_runtime.h>
-#include <device_launch_parameters.h>
-#include <cuda.h>
+#ifndef CPU_ONLY_BUILD
+#  include <cuda_runtime.h>
+#  include <device_launch_parameters.h>
+#  include <cuda.h>
+#else
+// ── CPU-only stubs (compiled without CUDA on CI) ─────────────
+#  define __global__
+#  define __device__
+#  define __host__
+#  define __shared__
+#  define __syncthreads() do{}while(0)
+   typedef int cudaStream_t;
+   typedef int cudaError_t;
+   struct cudaDeviceProp { char name[256]; int major; int minor; int multiProcessorCount; size_t totalGlobalMem;
+       cudaDeviceProp(): major(0),minor(0),multiProcessorCount(0),totalGlobalMem(0){ name[0]=0; } };
+   inline cudaError_t cudaGetDeviceCount(int* n){ *n=0; return 0; }
+   inline cudaError_t cudaGetDeviceProperties(cudaDeviceProp*,int){ return 0; }
+   inline cudaError_t cudaSetDevice(int){ return 0; }
+   inline cudaError_t cudaMalloc(void**,size_t){ return 1; }
+   inline cudaError_t cudaFree(void*){ return 0; }
+   inline cudaError_t cudaMemcpyAsync(void*,const void*,size_t,int,cudaStream_t){ return 1; }
+   inline cudaError_t cudaStreamCreate(cudaStream_t* s){ *s=0; return 0; }
+   inline cudaError_t cudaStreamDestroy(cudaStream_t){ return 0; }
+   inline cudaError_t cudaStreamSynchronize(cudaStream_t){ return 0; }
+   inline cudaError_t cudaGetLastError(){ return 0; }
+   inline const char* cudaGetErrorString(cudaError_t){ return "CPU_ONLY"; }
+   enum { cudaMemcpyHostToDevice=1, cudaMemcpyDeviceToHost=2, cudaMemcpyDeviceToDevice=3 };
+#endif
 
 #include <iostream>
 #include <vector>
