@@ -9,56 +9,55 @@ on:
 
 jobs:
   # ─────────────────────────────────────────────────────────────
-  #  Linux — ubuntu:18.04 container (GCC 5 native, GLIBC 2.27)
-  #  checkout@v3 uses Node 16 which only needs GLIBC 2.17 ✓
+  #  Linux — checkout on host (ubuntu-22.04), compile inside
+  #  ubuntu:18.04 docker manually (GCC 5 + CUDA 8.0)
   # ─────────────────────────────────────────────────────────────
   build-linux:
     name: Linux CUDA 8.0 sm_21 Fermi
-    runs-on: ubuntu-22.04
-    container:
-      image: ubuntu:18.04
+    runs-on: ubuntu-22.04  # NO container here — checkout runs on host
 
     steps:
-      - name: Install dependencies + GCC 5
-        run: |
-          apt-get update -qq
-          apt-get install -y --no-install-recommends \
-            wget ca-certificates git \
-            gcc-5 g++-5 build-essential
-          update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-5 50
-          update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-5 50
-          gcc --version
-
-      # checkout@v3 = Node 16, needs GLIBC >= 2.17 — ubuntu:18.04 has 2.27 ✓
+      # Checkout runs on ubuntu-22.04 host — no GLIBC issue
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
-      - name: Install CUDA 8.0 via runfile
+      # Now spin up ubuntu:18.04 manually just for the compile step
+      # Mount the workspace so the container can see our files
+      - name: Build inside ubuntu:18.04 container (GCC5 + CUDA 8.0)
         run: |
-          wget -q https://developer.nvidia.com/compute/cuda/8.0/Prod2/local_installers/cuda_8.0.61_375.26_linux-run \
-               -O cuda_8.0_installer.run
-          chmod +x cuda_8.0_installer.run
-          sh cuda_8.0_installer.run --silent --toolkit --no-opengl-libs --override
-          echo "/usr/local/cuda-8.0/bin" >> $GITHUB_PATH
+          docker run --rm \
+            -v "${{ github.workspace }}:/workspace" \
+            -w /workspace \
+            ubuntu:18.04 \
+            bash -c "
+              set -e
+              apt-get update -qq
+              apt-get install -y --no-install-recommends wget ca-certificates gcc-5 g++-5 build-essential
+              update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-5 50
+              update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-5 50
+              gcc --version
 
-      - name: Verify nvcc
-        run: /usr/local/cuda-8.0/bin/nvcc --version
+              wget -q https://developer.nvidia.com/compute/cuda/8.0/Prod2/local_installers/cuda_8.0.61_375.26_linux-run \
+                   -O /tmp/cuda_8.0_installer.run
+              chmod +x /tmp/cuda_8.0_installer.run
+              sh /tmp/cuda_8.0_installer.run --silent --toolkit --no-opengl-libs --override
 
-      - name: Compile hybrid_engine
-        run: |
-          /usr/local/cuda-8.0/bin/nvcc hybrid_engine.cu \
-            -o hybrid_engine \
-            -gencode arch=compute_21,code=sm_21 \
-            -gencode arch=compute_35,code=sm_35 \
-            -O3 \
-            -std=c++14 \
-            -ccbin g++-5 \
-            -Xcompiler -pthread \
-            -Xcompiler -O3 \
-            -w
+              /usr/local/cuda-8.0/bin/nvcc --version
 
-      - name: Smoke test (CPU-only mode on CI)
-        run: ./hybrid_engine 2>&1 | tee build_output.txt
+              /usr/local/cuda-8.0/bin/nvcc hybrid_engine.cu \
+                -o hybrid_engine \
+                -gencode arch=compute_21,code=sm_21 \
+                -gencode arch=compute_35,code=sm_35 \
+                -O3 \
+                -std=c++14 \
+                -ccbin g++-5 \
+                -Xcompiler -pthread \
+                -Xcompiler -O3 \
+                -w
+
+              echo 'Compile done!'
+              ./hybrid_engine
+            "
 
       - name: Upload binary
         uses: actions/upload-artifact@v4
@@ -67,16 +66,8 @@ jobs:
           path: hybrid_engine
           retention-days: 30
 
-      - name: Upload build log
-        uses: actions/upload-artifact@v4
-        with:
-          name: build_log
-          path: build_output.txt
-          retention-days: 7
-
   # ─────────────────────────────────────────────────────────────
-  #  Windows — CUDA 11.8 sm_35 (no Fermi support post CUDA 9)
-  #  Use this .exe if you ever swap to a Kepler GT730 variant
+  #  Windows — CUDA 11.8 sm_35
   # ─────────────────────────────────────────────────────────────
   build-windows:
     name: Windows CUDA 11.8 sm_35
@@ -85,7 +76,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Install CUDA 11.8
         uses: Jimver/cuda-toolkit@v0.2.11
