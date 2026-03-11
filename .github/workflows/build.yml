@@ -11,32 +11,32 @@ jobs:
   build:
     name: Compile with NVCC (CUDA 8.0 / sm_21 Fermi)
     runs-on: ubuntu-22.04
-    # Use official CUDA 8.0 Docker image — last version with Fermi sm_21 support
     container:
-      image: nvidia/cuda:8.0-devel-ubuntu16.04
+      image: ubuntu:16.04
 
     steps:
-    # ── 1. Install git (container is minimal) ─────────────────
-    - name: Install dependencies
+    - name: Install CUDA 8.0 from NVIDIA apt repo
       run: |
         apt-get update -qq
-        apt-get install -y --no-install-recommends git ca-certificates
+        apt-get install -y --no-install-recommends wget gnupg ca-certificates git
+        wget -q https://developer.download.nvidia.com/compute/cuda/repos/ubuntu1604/x86_64/cuda-repo-ubuntu1604_8.0.61-1_amd64.deb
+        dpkg -i cuda-repo-ubuntu1604_8.0.61-1_amd64.deb
+        apt-get update -qq
+        apt-get install -y --no-install-recommends \
+          cuda-nvcc-8-0 \
+          cuda-cudart-dev-8-0 \
+          cuda-crt-8-0
+        echo "PATH=/usr/local/cuda-8.0/bin:$PATH" >> $GITHUB_ENV
 
-    # ── 2. Checkout your repo ─────────────────────────────────
     - name: Checkout repository
       uses: actions/checkout@v4
 
-    # ── 3. Verify NVCC is available ───────────────────────────
     - name: Verify nvcc
-      run: nvcc --version
+      run: /usr/local/cuda-8.0/bin/nvcc --version
 
-    # ── 4. Compile the engine ─────────────────────────────────
-    #      sm_21 = Fermi GF108 — your exact GT730 chip
-    #      CUDA 8.0 is the LAST version that supports Fermi
-    #      -std=c++14 because CUDA 8.0 doesn't support c++17
     - name: Compile hybrid_engine
       run: |
-        nvcc hybrid_engine.cu \
+        /usr/local/cuda-8.0/bin/nvcc hybrid_engine.cu \
           -o hybrid_engine \
           -gencode arch=compute_21,code=sm_21 \
           -gencode arch=compute_35,code=sm_35 \
