@@ -9,45 +9,41 @@ on:
 
 jobs:
   build:
-    name: Compile with NVCC (CUDA 8.0 / sm_21 + sm_35)
+    name: Compile with NVCC (CUDA 8.0 / sm_21 Fermi)
     runs-on: ubuntu-22.04
+    # Use official CUDA 8.0 Docker image — last version with Fermi sm_21 support
+    container:
+      image: nvidia/cuda:8.0-devel-ubuntu16.04
 
     steps:
-    # ── 1. Checkout your repo ─────────────────────────────────
+    # ── 1. Install git (container is minimal) ─────────────────
+    - name: Install dependencies
+      run: |
+        apt-get update -qq
+        apt-get install -y --no-install-recommends git ca-certificates
+
+    # ── 2. Checkout your repo ─────────────────────────────────
     - name: Checkout repository
       uses: actions/checkout@v4
-
-    # ── 2. Install CUDA Toolkit via Jimver action (most reliable) ─
-    - name: Install CUDA Toolkit 11.8
-      uses: Jimver/cuda-toolkit@v0.2.11
-      with:
-        cuda: '11.8.0'
-        method: 'network'
-        sub-packages: '["nvcc", "cudart-dev"]'
 
     # ── 3. Verify NVCC is available ───────────────────────────
     - name: Verify nvcc
       run: nvcc --version
 
     # ── 4. Compile the engine ─────────────────────────────────
-    #      -arch=sm_21  → Fermi  GT730 (GF108 variant)
-    #      -arch=sm_35  → Kepler GT730 (GK208 variant)
-    #      We compile for both so the binary works on either card.
-    #      -O3          → maximum optimisation
-    #      -std=c++17   → modern C++ features
+    #      sm_21 = Fermi GF108 — your exact GT730 chip
+    #      CUDA 8.0 is the LAST version that supports Fermi
+    #      -std=c++14 because CUDA 8.0 doesn't support c++17
     - name: Compile hybrid_engine
       run: |
         nvcc hybrid_engine.cu \
           -o hybrid_engine \
-          -arch=sm_21 \
           -gencode arch=compute_21,code=sm_21 \
           -gencode arch=compute_35,code=sm_35 \
-          -gencode arch=compute_50,code=sm_50 \
           -O3 \
-          -std=c++17 \
+          -std=c++14 \
           -Xcompiler -pthread \
           -Xcompiler -O3 \
-          -lineinfo \
           -w
 
     # ── 5. Run the built binary (no GPU on CI, uses CPU-only) ─
@@ -98,9 +94,8 @@ jobs:
       run: |
         nvcc hybrid_engine.cu ^
           -o hybrid_engine.exe ^
-          -arch=sm_21 ^
-          -gencode arch=compute_21,code=sm_21 ^
           -gencode arch=compute_35,code=sm_35 ^
+          -gencode arch=compute_50,code=sm_50 ^
           -O3 ^
           -std=c++17 ^
           -Xcompiler /O2 ^
