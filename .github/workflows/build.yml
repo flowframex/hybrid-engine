@@ -9,42 +9,44 @@ on:
 
 jobs:
   # ─────────────────────────────────────────────────────────────
-  #  Linux — CUDA 8.0 + GCC 5 from toolchain PPA (Fermi sm_21)
+  #  Linux — Ubuntu 18.04 container (has gcc-5 natively)
+  #  + CUDA 8.0 runfile = Fermi sm_21 support
   # ─────────────────────────────────────────────────────────────
   build-linux:
     name: Linux CUDA 8.0 (sm_21 Fermi)
     runs-on: ubuntu-22.04
+    container:
+      image: ubuntu:18.04   # 18.04 ships gcc-5 in default repos, no PPA needed
 
     steps:
+      - name: Install dependencies
+        run: |
+          apt-get update -qq
+          apt-get install -y --no-install-recommends \
+            wget ca-certificates git \
+            gcc-5 g++-5 build-essential
+          update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-5 50
+          update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-5 50
+          gcc --version
+
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Install GCC-5 from ubuntu-toolchain-r PPA
-        run: |
-          sudo apt-get update -y
-          sudo apt-get install -y software-properties-common wget
-          # This PPA is the only place GCC 5 still lives for Ubuntu 22.04
-          sudo add-apt-repository -y ppa:ubuntu-toolchain-r/test
-          sudo apt-get update -y
-          sudo apt-get install -y gcc-5 g++-5
-          sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-5 50
-          sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-5 50
-          gcc --version
 
       - name: Install CUDA 8.0 via runfile
         run: |
           wget -q https://developer.nvidia.com/compute/cuda/8.0/Prod2/local_installers/cuda_8.0.61_375.26_linux-run \
                -O cuda_8.0_installer.run
           chmod +x cuda_8.0_installer.run
-          sudo sh cuda_8.0_installer.run --silent --toolkit --no-opengl-libs --override
+          # --override bypasses compiler version check, --toolkit skips driver install
+          sh cuda_8.0_installer.run --silent --toolkit --no-opengl-libs --override
           echo "/usr/local/cuda-8.0/bin" >> $GITHUB_PATH
 
       - name: Verify nvcc
-        run: nvcc --version
+        run: /usr/local/cuda-8.0/bin/nvcc --version
 
       - name: Compile hybrid_engine
         run: |
-          nvcc hybrid_engine.cu \
+          /usr/local/cuda-8.0/bin/nvcc hybrid_engine.cu \
             -o hybrid_engine \
             -gencode arch=compute_21,code=sm_21 \
             -gencode arch=compute_35,code=sm_35 \
@@ -76,7 +78,7 @@ jobs:
   #  Windows — for your actual PC
   # ─────────────────────────────────────────────────────────────
   build-windows:
-    name: Windows MSVC (sm_21 + sm_35)
+    name: Windows MSVC (sm_35 + sm_50)
     runs-on: windows-2022
     needs: build-linux
 
