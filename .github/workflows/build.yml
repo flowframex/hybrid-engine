@@ -8,43 +8,62 @@ on:
   workflow_dispatch:
 
 jobs:
-  # ─────────────────────────────────────────────────────────────
-  #  Linux — checkout on host (ubuntu-22.04), compile inside
-  #  ubuntu:18.04 docker manually (GCC 5 + CUDA 8.0)
-  # ─────────────────────────────────────────────────────────────
   build-linux:
     name: Linux CUDA 8.0 sm_21 Fermi
-    runs-on: ubuntu-22.04  # NO container here — checkout runs on host
+    runs-on: ubuntu-22.04
 
     steps:
-      # Checkout runs on ubuntu-22.04 host — no GLIBC issue
       - name: Checkout
         uses: actions/checkout@v4
 
-      # Now spin up ubuntu:18.04 manually just for the compile step
-      # Mount the workspace so the container can see our files
-      - name: Build inside ubuntu:18.04 container (GCC5 + CUDA 8.0)
+      - name: Build inside ubuntu:18.04 via docker
         run: |
           docker run --rm \
             -v "${{ github.workspace }}:/workspace" \
             -w /workspace \
             ubuntu:18.04 \
-            bash -c "
-              set -e
+            bash -exc '
+              # ── 1. System packages ──────────────────────────
               apt-get update -qq
-              apt-get install -y --no-install-recommends wget ca-certificates gcc-5 g++-5 build-essential
+              apt-get install -y --no-install-recommends \
+                wget ca-certificates gcc-5 g++-5 build-essential
               update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-5 50
               update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-5 50
               gcc --version
 
-              wget -q https://developer.nvidia.com/compute/cuda/8.0/Prod2/local_installers/cuda_8.0.61_375.26_linux-run \
-                   -O /tmp/cuda_8.0_installer.run
-              chmod +x /tmp/cuda_8.0_installer.run
-              sh /tmp/cuda_8.0_installer.run --silent --toolkit --no-opengl-libs --override
+              # ── 2. Download CUDA 8.0 runfile (verbose) ─────
+              echo "[STEP] Downloading CUDA 8.0 runfile..."
+              wget --progress=dot:giga \
+                https://developer.nvidia.com/compute/cuda/8.0/Prod2/local_installers/cuda_8.0.61_375.26_linux-run \
+                -O /tmp/cuda_installer.run
+              ls -lh /tmp/cuda_installer.run
+              chmod +x /tmp/cuda_installer.run
 
-              /usr/local/cuda-8.0/bin/nvcc --version
+              # ── 3. Install toolkit (verbose, no driver) ────
+              echo "[STEP] Installing CUDA 8.0 toolkit..."
+              sh /tmp/cuda_installer.run \
+                --toolkit \
+                --no-opengl-libs \
+                --override \
+                --verbose \
+                2>&1 || true
 
-              /usr/local/cuda-8.0/bin/nvcc hybrid_engine.cu \
+              # ── 4. Confirm nvcc exists ─────────────────────
+              echo "[STEP] Looking for nvcc..."
+              find /usr/local -name "nvcc" 2>/dev/null || echo "nvcc not found in /usr/local"
+              ls /usr/local/ || true
+
+              NVCC=$(find /usr/local -name "nvcc" 2>/dev/null | head -1)
+              if [ -z "$NVCC" ]; then
+                echo "[ERROR] nvcc not found after install. Aborting."
+                exit 1
+              fi
+              echo "[OK] nvcc found at: $NVCC"
+              $NVCC --version
+
+              # ── 5. Compile ─────────────────────────────────
+              echo "[STEP] Compiling hybrid_engine.cu..."
+              $NVCC hybrid_engine.cu \
                 -o hybrid_engine \
                 -gencode arch=compute_21,code=sm_21 \
                 -gencode arch=compute_35,code=sm_35 \
@@ -54,10 +73,9 @@ jobs:
                 -Xcompiler -pthread \
                 -Xcompiler -O3 \
                 -w
-
-              echo 'Compile done!'
-              ./hybrid_engine
-            "
+              echo "[DONE] Compile successful."
+              ls -lh hybrid_engine
+            '
 
       - name: Upload binary
         uses: actions/upload-artifact@v4
@@ -66,9 +84,6 @@ jobs:
           path: hybrid_engine
           retention-days: 30
 
-  # ─────────────────────────────────────────────────────────────
-  #  Windows — CUDA 11.8 sm_35
-  # ─────────────────────────────────────────────────────────────
   build-windows:
     name: Windows CUDA 11.8 sm_35
     runs-on: windows-2022
@@ -88,15 +103,14 @@ jobs:
       - name: Set up MSVC
         uses: ilammy/msvc-dev-cmd@v1
 
-      - name: Compile hybrid_engine
+      - name: Compile
         shell: cmd
         run: |
           nvcc hybrid_engine.cu ^
             -o hybrid_engine.exe ^
             -gencode arch=compute_35,code=sm_35 ^
             -gencode arch=compute_50,code=sm_50 ^
-            -O3 ^
-            -std=c++14 ^
+            -O3 -std=c++14 ^
             -Xcompiler /O2 ^
             -w
 
