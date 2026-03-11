@@ -25,7 +25,6 @@
 #include <deque>
 #include <thread>
 #include <mutex>
-#include <shared_mutex>
 #include <condition_variable>
 #include <functional>
 #include <atomic>
@@ -1123,7 +1122,7 @@ int main() {
     // ── Test 2: Large vector (will go to GPU if available) ───
     std::cout << "\n=== Test 2: Large VEC_MUL (n=1,000,000, GPU path) ===\n";
     {
-        int n = 1'000'000;
+        int n = 1000000;
         auto a = random_vec(n);
         auto b = random_vec(n);
         auto t0 = std::chrono::high_resolution_clock::now();
@@ -1140,7 +1139,7 @@ int main() {
     // ── Test 3: Dot product ──────────────────────────────────
     std::cout << "\n=== Test 3: DOT PRODUCT (n=500,000) ===\n";
     {
-        int n = 500'000;
+        int n = 500000;
         auto a = random_vec(n, 1.f, 2.f);
         auto b = random_vec(n, 1.f, 2.f);
         auto t0 = std::chrono::high_resolution_clock::now();
@@ -1180,7 +1179,7 @@ int main() {
         for (int i = 0; i < 16; ++i) {
             tasks[i] = std::make_shared<Task>();
             tasks[i]->type   = (i % 2 == 0) ? TaskType::VEC_ADD : TaskType::VEC_SQRT;
-            tasks[i]->a      = random_vec(100'000);
+            tasks[i]->a      = random_vec(100000);
             tasks[i]->b      = random_vec(100'000);
             tasks[i]->output = &outputs[i];
             futures.push_back(engine.submit(tasks[i]));
@@ -1194,7 +1193,7 @@ int main() {
     {
         int counter = 0;
         engine.dispatch_cpu([&counter]{
-            for (int i = 0; i < 1'000'000; ++i) counter += i % 7;
+            for (int i = 0; i < 1000000; ++i) counter += i % 7;
         });
         std::cout << "  counter=" << counter << "\n";
     }
